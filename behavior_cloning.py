@@ -24,13 +24,11 @@ def parse_image_path(fullPath):
 
 def load_image_and_measurement(data_path, image_path, measurement):
     """
-    Executes the following steps:
-      - Loads the image from `data_path` and `imagPath`.
-      - Converts the image from BGR to RGB.
-      - Adds the image and `measurement` to `images` and `measurements`.
+      - Loads the image from `data_path` and `image_path`.
+      - Converts the image from BGR to RGB. (Simulator provides images as RGB)
       - Flips the image vertically.
       - Inverts the sign of the `measurement`.
-      - Adds the flipped image and inverted `measurement` to `images` and `measurements`.
+      - Return (measurements, images) tuple
     """
     measurements, images = [], []
     original_image = cv2.imread(data_path + '/' + image_path.strip())
@@ -43,7 +41,7 @@ def load_image_and_measurement(data_path, image_path, measurement):
     return measurements, images
 
 
-def training_generator(sample_lines, batch_size):
+def generator(data_path, sample_lines, correction, batch_size):
     num_lines = len(sample_lines)
     for offset in range(0, num_lines, batch_size):
         batch_lines = sample_lines[offset:offset+batch_size]
@@ -63,22 +61,22 @@ def training_generator(sample_lines, batch_size):
             images = images + center_images + left_images + right_images
             measurements = measurements + center_measurements + left_measurements + right_measurements
 
+            X_train = np.array(images)
+            y_train = np.array(measurements)
 
-        images, measurements = shuffle(images, measurements, random_state=10)
-        yield (np.array(images), np.array(measurements))
+            yield shuffle(X_train, y_train, random_state=10)
     
 
 def load_images_and_measurements(data_path, skip_header=False, correction=0.2, batch_size = 1000):
     """
     Loads the images and measurements from the driving logs in the directory `data_path`.
-    If the file include headers, pass `skip_header=True`.
     `correction` is the value to add/substract to the measurement to use side cameras.
-    Returns a pair `(images, measurements)`
+    Returns `(training_generator, validation_generator), (train_lines, validation_lines)`
     """
     lines = get_lines_from_driving_logs(data_path, skip_header)
     train_lines, validation_lines = train_test_split(lines, test_size=0.2)
-    training_generator = training_generator(train_lines, batch_size)
-    validation_generator = training_generator(validation_lines, batch_size)
+    training_generator = generator(data_path, train_lines, correction, batch_size)
+    validation_generator = generator(data_path, validation_lines, correction, batch_size)
     
     return (training_generator, validation_generator), (train_lines, validation_lines)
     
@@ -146,9 +144,9 @@ def nvidia_model():
 
 
 print('Loading images')
-generators, samples = load_images_and_measurements('data', skip_header=True, batch_size = 1000)
-# model = leNet_model()
-model = nvidia_model()
+generators, samples = load_images_and_measurements('data', skip_header=True, batch_size=5000)
+model = leNet_model()
+# model = nvidia_model()
 print('Training model')
-train_and_save(model, generators, samples, 'models/nVidea_data.h5', epochs=7)
+train_and_save(model, generators, samples, 'models/lenet_data.h5', epochs=7)
 print('The End')
