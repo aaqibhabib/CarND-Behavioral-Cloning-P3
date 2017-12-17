@@ -110,21 +110,6 @@ def create_preprocessing_layers():
 
     return model
 
-def leNet_model():
-    """
-    Creates a LeNet model.
-    """
-    model = create_preprocessing_layers()
-    model.add(Convolution2D(6,5,5,activation='relu'))
-    model.add(MaxPooling2D())
-    model.add(Convolution2D(6,5,5,activation='relu'))
-    model.add(MaxPooling2D())
-    model.add(Flatten())
-    model.add(Dense(120))
-    model.add(Dense(84))
-    model.add(Dense(1))
-    return model
-
 def nvidia_model():
     """
     Creates nvidea Autonomous Car Group model
@@ -143,10 +128,13 @@ def nvidia_model():
     return model
 
 
-print('Loading images')
-generators, samples = load_images_and_measurements('data', skip_header=True, batch_size=5000)
-model = leNet_model()
-# model = nvidia_model()
-print('Training model')
-train_and_save(model, generators, samples, 'models/lenet_data.h5', epochs=7)
-print('The End')
+def main():
+    print('Loading images')
+    generators, samples = load_images_and_measurements('data', skip_header=True, batch_size=5000)
+    model = nvidia_model()
+    print('Training model')
+    train_and_save(model, generators, samples, 'models/data.h5', epochs=7)
+    print('The End')
+    
+if __name__ == "__main__":
+    main()
