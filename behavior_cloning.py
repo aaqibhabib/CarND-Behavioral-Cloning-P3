@@ -2,6 +2,7 @@ import cv2
 import csv
 import numpy as np
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 
 def get_lines_from_driving_logs(data_path, skip_header=False):
     """
@@ -18,9 +19,10 @@ def get_lines_from_driving_logs(data_path, skip_header=False):
     return lines
 
 def parse_image_path(fullPath):
+    # modify split char depending on unix or windows training set
     return '/'.join(fullPath.split('/')[-2:])
 
-def load_image_and_measurement(data_path, image_path, measurement, images, measurements):
+def load_image_and_measurement(data_path, image_path, measurement):
     """
     Executes the following steps:
       - Loads the image from `data_path` and `imagPath`.
@@ -30,16 +32,43 @@ def load_image_and_measurement(data_path, image_path, measurement, images, measu
       - Inverts the sign of the `measurement`.
       - Adds the flipped image and inverted `measurement` to `images` and `measurements`.
     """
+    measurements, images = [], []
     original_image = cv2.imread(data_path + '/' + image_path.strip())
-    # import pdb; pdb.set_trace()
     image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
     images.append(image)
     measurements.append(measurement)
     # Flipping
     images.append(cv2.flip(image,1))
     measurements.append(measurement*-1.0)
+    return measurements, images
 
-def load_images_and_measurements(data_path, skip_header=False, correction=0.2):
+
+def training_generator(sample_lines, batch_size):
+    num_lines = len(sample_lines)
+    for offset in range(0, num_lines, batch_size):
+        batch_lines = sample_lines[offset:offset+batch_size]
+
+        images = []
+        measurements = []
+
+        for line in batch_lines:
+            measurement = float(line[3])
+            # Center
+            center_measurements, center_images = load_image_and_measurement(data_path, parse_image_path(line[0]), measurement)
+            # Left
+            left_measurements, left_images = load_image_and_measurement(data_path, parse_image_path(line[1]), measurement + correction)
+            # Right
+            right_measurements, right_images = load_image_and_measurement(data_path, parse_image_path(line[2]), measurement - correction)
+
+            images = images + center_images + left_images + right_images
+            measurements = measurements + center_measurements + left_measurements + right_measurements
+
+
+        images, measurements = shuffle(images, measurements, random_state=10)
+        yield (np.array(images), np.array(measurements))
+    
+
+def load_images_and_measurements(data_path, skip_header=False, correction=0.2, batch_size = 1000):
     """
     Loads the images and measurements from the driving logs in the directory `data_path`.
     If the file include headers, pass `skip_header=True`.
@@ -47,32 +76,29 @@ def load_images_and_measurements(data_path, skip_header=False, correction=0.2):
     Returns a pair `(images, measurements)`
     """
     lines = get_lines_from_driving_logs(data_path, skip_header)
-    images = []
-    measurements = []
-
-    for line in lines:
-        measurement = float(line[3])
-        # Center
-        load_image_and_measurement(data_path, parse_image_path(line[0]), measurement, images, measurements)
-        # Left
-        load_image_and_measurement(data_path, parse_image_path(line[1]), measurement + correction, images, measurements)
-        # Right
-        load_image_and_measurement(data_path, parse_image_path(line[2]), measurement - correction, images, measurements)
+    train_lines, validation_lines = train_test_split(lines, test_size=0.2)
+    training_generator = training_generator(train_lines, batch_size)
+    validation_generator = training_generator(validation_lines, batch_size)
     
-    images, measurements = shuffle(images, measurements, random_state=10)
-    return (np.array(images), np.array(measurements))
+    return (training_generator, validation_generator), (train_lines, validation_lines)
+    
+    
 
 from keras.models import Sequential
 from keras.layers import Flatten, Dense, Lambda, Convolution2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 
-def train_and_save(model, inputs, outputs, model_file, epochs = 3):
+def train_and_save(model, generators, samples, model_file, epochs = 3):
     """
     Train the model `model` using 'mse' lost and 'adam' optimizer for the epochs `epochs`.
     The model is saved at `model_file`
     """
     model.compile(loss='mse', optimizer='adam')
-    model.fit(inputs, outputs, validation_split=0.2, shuffle=True, nb_epoch=epochs)
+    training_generator, validation_generator = generators
+    train_lines, validation_lines = samples
+    
+    model.fit_generator(training_generator, samples_per_epoch=len(train_lines), 
+                        validation_data=validation_generator, nb_val_samples=len(validation_lines), nb_epoch=epochs)
     model.save(model_file)
     print("Model saved at " + model_file)
 
@@ -120,9 +146,9 @@ def nvidia_model():
 
 
 print('Loading images')
-X_train, y_train = load_images_and_measurements('data', skip_header=True)
+generators, samples = load_images_and_measurements('data', skip_header=True, batch_size = 1000)
 # model = leNet_model()
 model = nvidia_model()
 print('Training model')
-train_and_save(model, X_train, y_train, 'models/nVidea_data.h5', epochs=7)
+train_and_save(model, generators, samples, 'models/nVidea_data.h5', epochs=7)
 print('The End')
