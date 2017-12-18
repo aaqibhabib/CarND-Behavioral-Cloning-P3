@@ -3,6 +3,8 @@ import csv
 import numpy as np
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers import Flatten, Dense, Lambda, Convolution2D, Cropping2D
 
 def get_lines_from_driving_logs(data_path, skip_header=False):
     """
@@ -21,6 +23,7 @@ def get_lines_from_driving_logs(data_path, skip_header=False):
 def parse_image_path(fullPath):
     # modify split char depending on unix or windows training set
     return '/'.join(fullPath.split('/')[-2:])
+
 
 def load_image_and_measurement(data_path, image_path, measurement):
     """
@@ -65,7 +68,7 @@ def generator(data_path, sample_lines, correction, batch_size):
             y_train = np.array(measurements)
 
             yield shuffle(X_train, y_train, random_state=10)
-    
+
 
 def load_images_and_measurements(data_path, skip_header=False, correction=0.2, batch_size = 1000):
     """
@@ -79,12 +82,7 @@ def load_images_and_measurements(data_path, skip_header=False, correction=0.2, b
     validation_generator = generator(data_path, validation_lines, correction, batch_size)
     
     return (training_generator, validation_generator), (train_lines, validation_lines)
-    
-    
 
-from keras.models import Sequential
-from keras.layers import Flatten, Dense, Lambda, Convolution2D, Cropping2D
-from keras.layers.pooling import MaxPooling2D
 
 def train_and_save(model, generators, samples, model_file, epochs = 3):
     """
@@ -100,6 +98,7 @@ def train_and_save(model, generators, samples, model_file, epochs = 3):
     model.save(model_file)
     print("Model saved at " + model_file)
 
+
 def create_preprocessing_layers():
     """
     Creates a model with the initial pre-processing layers.
@@ -109,6 +108,7 @@ def create_preprocessing_layers():
     model.add(Lambda(lambda x: (x / 255.0) - 0.5))
 
     return model
+
 
 def nvidia_model():
     """
@@ -136,5 +136,6 @@ def main():
     train_and_save(model, generators, samples, 'models/data.h5', epochs=7)
     print('The End')
     
+
 if __name__ == "__main__":
     main()
